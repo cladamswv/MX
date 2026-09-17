@@ -1,0 +1,3 @@
+DIRTLINE MX ARCADE 3.2 STATIC AUDIT
+resource refs: 71 scripts: 7 GLBs: 23 images: 50 WAV: 15 OGG: 4
+errors: 0 warnings: 0

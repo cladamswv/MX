@@ -1,0 +1,11 @@
+DIRTLINE MX Rebuild 1.1 static/debug audit
+================================================
+res_refs=52
+class_names=6
+glbs=13
+images=22
+audio=17
+errors=0
+warnings=0
+
+NOTE: This container does not have the Godot 4.3 executable, so engine parsing/runtime/export is intentionally delegated to the included godot-ci GitHub workflow. The workflow runs editor import, app startup, production-path race smoke test, Android export, signature verification, and manifest inspection before publishing the artifact.
