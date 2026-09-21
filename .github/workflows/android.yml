@@ -1,0 +1,128 @@
+name: Validate and Build DIRTLINE MX Arcade 3.4.0 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.3
+
+    env:
+      GODOT_VERSION: "4.3"
+      GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /root/debug.keystore
+      GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+      GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare Godot CI home and Android tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$HOME/.config/godot"
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
+          cp -a /root/.config/godot/. "$HOME/.config/godot/"
+          cp -a /root/.local/share/godot/export_templates/4.3.stable/. "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          mkdir -p build
+          godot --version
+          java -version
+          test -f "$HOME/.local/share/godot/export_templates/4.3.stable/android_debug.apk"
+          test -f project.godot
+          test -f export_presets.cfg
+          test -f models/dirt_bike_rider_arcade_v4.glb
+          test -f models/props/background_pine_ridge_mp.glb
+          test -f models/props/background_red_mesa_mp.glb
+          test -f models/props/background_quarry_mp.glb
+          test -f textures/backgrounds/pine_rock_albedo.jpg
+          test -f textures/backgrounds/mesa_rock_albedo.jpg
+          test -f textures/backgrounds/quarry_rock_albedo.jpg
+          test -f ui/logo_main.png
+          test -f ui/logo_mark.png
+          test -f ui/menu_background.jpg
+          test -f ui/loading_background.jpg
+          test -f audio/sfx/ui_click.wav
+          test -f audio/sfx/ui_confirm.wav
+
+      - name: Verify Arcade 3.4.0 configuration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'config/name="DIRTLINE MX Arcade 3.4.0"' project.godot
+          grep -F 'textures/vram_compression/import_etc2_astc=true' project.godot
+          grep -F 'renderer/rendering_method="gl_compatibility"' project.godot
+          grep -F 'window/handheld/orientation=0' project.godot
+          grep -F 'package/unique_name="com.carl.dirtlinemx.arcade30"' export_presets.cfg
+          grep -F 'version/name="3.4.0"' export_presets.cfg
+          grep -F 'version/code=36' export_presets.cfg
+          grep -F 'PROJECTION_PERSPECTIVE' scripts/CameraRig.gd
+          grep -F 'LANE_POSITIONS' scripts/Bike.gd
+          grep -F 'surface_height_at' scripts/TrackBuilder.gd
+          grep -F 'arcade_25d_mode := true' scripts/TrackBuilder.gd
+          grep -F 'dirt_bike_rider_arcade_v4.glb' scripts/Bike.gd
+          grep -F 'show_loading_for_course' scripts/HUD.gd
+          grep -F 'DIRTLINE MX' scripts/HUD.gd
+          grep -F 'GARAGE' scripts/HUD.gd
+          grep -F 'TIME TRIAL' scripts/HUD.gd
+          grep -F 'PauseMenu' scripts/HUD.gd
+          grep -F 'DIRTLINE_SMOKETEST_V330_ARCADE_DRIVE_CLEARHUD_PARSESAFE' scripts/SmokeTest.gd
+          grep -F 'add_theme_constant_override("icon_max_width", 34)' scripts/HUD.gd
+          grep -F 'func bind_racers(new_racers: Array[DirtlineBike])' scripts/AudioManager.gd
+          grep -F 'func _activate_race_grid()' scripts/Main.gd
+          grep -F 'func activate_from_grid()' scripts/Bike.gd
+          grep -F 'deterministic surface-follow movement' scripts/Bike.gd
+          grep -F 'camera_back_offset := 6.6' scripts/CameraRig.gd
+          grep -F 'brand.name = "GameplayBrand"' scripts/HUD.gd
+          grep -F 'var bx: float = start_pos_x + start_offsets[i]' scripts/Main.gd
+          grep -F 'var by: float = float(track.surface_height_at(bx, lane_z)) - 0.10' scripts/Main.gd
+          if grep -Eq '^[[:space:]]*var[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:=' scripts/Main.gd; then echo 'Unsafe inferred local remains in Main.gd'; exit 1; fi
+          if grep -F ':=' scripts/SmokeTest.gd; then
+            echo "ERROR: SmokeTest.gd contains type-inference operator :="
+            exit 1
+          fi
+          sha256sum scripts/SmokeTest.gd
+
+      - name: Import project and parse every script/resource
+        shell: bash
+        run: |
+          set -euxo pipefail
+          godot --headless --verbose --path . --editor --quit
+          godot --headless --verbose --path . --quit-after 4
+
+      - name: Runtime five-lane + turnkey presentation smoke test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          timeout 90s godot --headless --path . --script res://scripts/SmokeTest.gd
+
+      - name: Export Android debug APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          godot --headless --verbose --path . --export-debug "Android" build/DIRTLINE-MX-Arcade-3.4.0.apk
+          test -s build/DIRTLINE-MX-Arcade-3.4.0.apk
+          ls -lh build/DIRTLINE-MX-Arcade-3.4.0.apk
+
+      - name: Verify APK manifest and signature
+        shell: bash
+        run: |
+          set -euxo pipefail
+          AAPT=/usr/lib/android-sdk/build-tools/33.0.2/aapt
+          APKSIGNER=/usr/lib/android-sdk/build-tools/33.0.2/apksigner
+          "$APKSIGNER" verify --verbose build/DIRTLINE-MX-Arcade-3.4.0.apk
+          "$AAPT" dump badging build/DIRTLINE-MX-Arcade-3.4.0.apk | tee /tmp/badging.txt
+          grep -F "package: name='com.carl.dirtlinemx.arcade30'" /tmp/badging.txt
+          "$AAPT" dump xmltree build/DIRTLINE-MX-Arcade-3.4.0.apk AndroidManifest.xml | tee /tmp/manifest.txt
+          grep -i "screenOrientation" /tmp/manifest.txt
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DIRTLINE-MX-Arcade-3.4.0-Android
+          path: build/DIRTLINE-MX-Arcade-3.4.0.apk
+          if-no-files-found: error
